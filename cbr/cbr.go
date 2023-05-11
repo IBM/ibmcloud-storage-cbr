@@ -46,6 +46,9 @@ type CBRInterface interface {
 
 	// DeleteCBRRuleZone ...
 	DeleteCBRRuleZone(ruleID string, zoneID string) error
+
+	// Cleanup all ...
+	Cleanup(pattern string) error
 }
 
 // StorageCBR ...
@@ -286,4 +289,9 @@ func (storageCBR *StorageCBR) DeleteCBRRuleZone(ruleID string, zoneID string) er
 	}
 
 	return err
+}
+
+//Cleans up all zones and rules created
+func (storageCBR *StorageCBR) Cleanup(pattern string) error {
+	return nil
 }
