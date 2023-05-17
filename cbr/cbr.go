@@ -8,6 +8,7 @@ import (
 
 	"github.com/IBM/go-sdk-core/v5/core"
 	"github.com/IBM/platform-services-go-sdk/contextbasedrestrictionsv1"
+	"go.uber.org/zap"
 )
 
 const (
@@ -47,8 +48,11 @@ type CBRInterface interface {
 	// DeleteCBRRuleZone ...
 	DeleteCBRRuleZone(ruleID string, zoneID string) error
 
-	// Cleanup all ...
-	Cleanup(pattern string) error
+	// DeleteCBRZoneWithPattern ...
+	DeleteCBRZoneWithPattern(zoneDescription string) ([]string, error)
+
+	// DeleteCBRRuleWithPattern ...
+	DeleteCBRRuleWithPattern(ruleDescription string) ([]string, error)
 }
 
 // StorageCBR ...
@@ -56,6 +60,7 @@ type StorageCBR struct {
 	accountID                       string
 	resourceGroupID                 string
 	contextBasedRestrictionsService *contextbasedrestrictionsv1.ContextBasedRestrictionsV1
+	logger                          *zap.Logger
 }
 
 // NewCBRInterface ...
@@ -73,11 +78,13 @@ func NewStorageCBR(apiKey string, accountID string, resourceGroupID string) *Sto
 		fmt.Printf("Error initializing contextbasedrestrictions sdk : " + err.Error())
 		return nil
 	}
+	logger, _ := zap.NewDevelopment()
 
 	return &StorageCBR{
 		accountID:                       accountID,
 		resourceGroupID:                 resourceGroupID,
 		contextBasedRestrictionsService: contextBasedRestrictionsService,
+		logger:                          logger,
 	}
 }
 
@@ -291,7 +298,65 @@ func (storageCBR *StorageCBR) DeleteCBRRuleZone(ruleID string, zoneID string) er
 	return err
 }
 
-//Cleans up all zones and rules created
-func (storageCBR *StorageCBR) Cleanup(pattern string) error {
-	return nil
+// DeleteCBRZoneWithPattern ...
+func (storageCBR *StorageCBR) DeleteCBRZoneWithPattern(zoneDescription string) ([]string, error) {
+	//List all CBR zones
+	var zoneIds []string
+	listOptions := storageCBR.contextBasedRestrictionsService.NewListZonesOptions(storageCBR.accountID)
+	listzone, _, err := storageCBR.contextBasedRestrictionsService.ListZones(listOptions)
+	if err != nil {
+		storageCBR.logger.Error("Error while listing the zones", zap.Error(err))
+		return []string{}, err
+	}
+
+	storageCBR.logger.Info("total zone count", zap.Any("count", *listzone.Count))
+	if zoneDescription == "" {
+		storageCBR.logger.Info("Empty zoneDescription, all the zones will be deleted")
+	}
+	for _, zone := range listzone.Zones {
+		if strings.Contains(*zone.Name, zoneDescription) {
+			//Delete zones
+			deletezoneOptions := storageCBR.contextBasedRestrictionsService.NewDeleteZoneOptions(*zone.ID)
+			_, err := storageCBR.contextBasedRestrictionsService.DeleteZone(deletezoneOptions)
+			if err != nil {
+				storageCBR.logger.Error("Error while deleting zone", zap.Any("zone id", *zone.ID), zap.Any("zone name", *zone.Name), zap.Error(err))
+			} else {
+				zoneIds = append(zoneIds, *zone.ID)
+			}
+		}
+	}
+	storageCBR.logger.Info("List of ZoneId's deleted with match", zap.Any("Description", zoneDescription), zap.Strings("ids", zoneIds))
+	return zoneIds, err
+}
+
+// DeleteCBRRuleWithPattern ...
+func (storageCBR *StorageCBR) DeleteCBRRuleWithPattern(ruleDescription string) ([]string, error) {
+	//List all CBR rules
+	var ruleIds []string
+	listOptions := storageCBR.contextBasedRestrictionsService.NewListRulesOptions(storageCBR.accountID)
+	listrules, _, err := storageCBR.contextBasedRestrictionsService.ListRules(listOptions)
+	if err != nil {
+		storageCBR.logger.Error("Error while listing the rules", zap.Error(err))
+		return []string{}, err
+	}
+
+	storageCBR.logger.Info("total zone count", zap.Any("count", *listrules.Count))
+	if ruleDescription == "" {
+		storageCBR.logger.Info("Empty ruleDescription, all the rules will be deleted")
+	}
+	for _, rule := range listrules.Rules {
+		if strings.Contains(*rule.Description, ruleDescription) {
+			//Delete rules
+			deleteruleOptions := storageCBR.contextBasedRestrictionsService.NewDeleteRuleOptions(*rule.ID)
+			_, err = storageCBR.contextBasedRestrictionsService.DeleteRule(deleteruleOptions)
+			if err != nil {
+				storageCBR.logger.Error("Error while deleting zone", zap.Any("rule description", *rule.Description), zap.Error(err))
+
+			} else {
+				ruleIds = append(ruleIds, *rule.ID)
+			}
+		}
+	}
+	storageCBR.logger.Info("List of ruleId's deleted with match", zap.Any("Description", ruleDescription), zap.Strings("ids", ruleIds))
+	return ruleIds, err
 }
