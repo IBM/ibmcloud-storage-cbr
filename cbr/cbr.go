@@ -3,6 +3,7 @@ package cbr
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -300,6 +301,10 @@ func (storageCBR *StorageCBR) DeleteCBRRuleZone(ruleID string, zoneID string) er
 
 // DeleteCBRZoneWithPattern ...
 func (storageCBR *StorageCBR) DeleteCBRZoneWithPattern(zoneDescription string) ([]string, error) {
+	if zoneDescription == "" {
+		storageCBR.logger.Info("Empty zoneDescription..")
+		return []string{}, errors.New("zoneDescription cannot be empty")
+	}
 	//List all CBR zones
 	var zoneIds []string
 	listOptions := storageCBR.contextBasedRestrictionsService.NewListZonesOptions(storageCBR.accountID)
@@ -310,9 +315,6 @@ func (storageCBR *StorageCBR) DeleteCBRZoneWithPattern(zoneDescription string) (
 	}
 
 	storageCBR.logger.Info("total zone count", zap.Any("count", *listzone.Count))
-	if zoneDescription == "" {
-		storageCBR.logger.Info("Empty zoneDescription, all the zones will be deleted")
-	}
 	for _, zone := range listzone.Zones {
 		if strings.Contains(*zone.Name, zoneDescription) {
 			//Delete zones
@@ -331,6 +333,10 @@ func (storageCBR *StorageCBR) DeleteCBRZoneWithPattern(zoneDescription string) (
 
 // DeleteCBRRuleWithPattern ...
 func (storageCBR *StorageCBR) DeleteCBRRuleWithPattern(ruleDescription string) ([]string, error) {
+	if ruleDescription == "" {
+		storageCBR.logger.Info("Empty ruleDescription")
+		return []string{}, errors.New("ruleDescription cannot be empty")
+	}
 	//List all CBR rules
 	var ruleIds []string
 	listOptions := storageCBR.contextBasedRestrictionsService.NewListRulesOptions(storageCBR.accountID)
@@ -339,11 +345,8 @@ func (storageCBR *StorageCBR) DeleteCBRRuleWithPattern(ruleDescription string) (
 		storageCBR.logger.Error("Error while listing the rules", zap.Error(err))
 		return []string{}, err
 	}
-
 	storageCBR.logger.Info("total zone count", zap.Any("count", *listrules.Count))
-	if ruleDescription == "" {
-		storageCBR.logger.Info("Empty ruleDescription, all the rules will be deleted")
-	}
+
 	for _, rule := range listrules.Rules {
 		if strings.Contains(*rule.Description, ruleDescription) {
 			//Delete rules
