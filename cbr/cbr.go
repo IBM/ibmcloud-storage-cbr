@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/IBM/go-sdk-core/v5/core"
@@ -60,12 +61,14 @@ type CBRInterface interface {
 type StorageCBR struct {
 	accountID                       string
 	resourceGroupID                 string
+	clusterID                       string
+	pattern                         string //This pattern will be appended to the zone and rules name
 	contextBasedRestrictionsService *contextbasedrestrictionsv1.ContextBasedRestrictionsV1
 	logger                          *zap.Logger
 }
 
 // NewCBRInterface ...
-func NewStorageCBR(apiKey string, accountID string, resourceGroupID string) *StorageCBR {
+func NewStorageCBR(apiKey, accountID, resourceGroupID, clusterID, pattern string) *StorageCBR {
 
 	contextBasedRestrictionsServiceOptions := &contextbasedrestrictionsv1.ContextBasedRestrictionsV1Options{
 		Authenticator: &core.IamAuthenticator{
@@ -84,6 +87,8 @@ func NewStorageCBR(apiKey string, accountID string, resourceGroupID string) *Sto
 	return &StorageCBR{
 		accountID:                       accountID,
 		resourceGroupID:                 resourceGroupID,
+		clusterID:                       clusterID,
+		pattern:                         pattern,
 		contextBasedRestrictionsService: contextBasedRestrictionsService,
 		logger:                          logger,
 	}
@@ -91,6 +96,7 @@ func NewStorageCBR(apiKey string, accountID string, resourceGroupID string) *Sto
 
 func (storageCBR *StorageCBR) CreateCBRZone(name string, cbrInput CBR) (string, error) {
 	fmt.Println("\nCreateZone() result:")
+	name = name + "-" + storageCBR.pattern
 
 	// begin-create_zone
 	var addressIntf []contextbasedrestrictionsv1.AddressIntf
@@ -233,12 +239,22 @@ func (storageCBR *StorageCBR) CreateCBRRule(zoneID string, serviceName string) (
 			},
 		},
 	}
+	if storageCBR.clusterID != "" {
+		resourceModel.Attributes = append(resourceModel.Attributes, contextbasedrestrictionsv1.ResourceAttribute{Name: core.StringPtr("serviceInstance"), Value: core.StringPtr(storageCBR.clusterID), Operator: core.StringPtr("stringEquals")})
+	}
 
 	createRuleOptions := storageCBR.contextBasedRestrictionsService.NewCreateRuleOptions()
-	createRuleOptions.SetDescription(serviceName + " rule")
+	createRuleOptions.SetDescription(serviceName + "-rule-" + storageCBR.pattern)
 	createRuleOptions.SetContexts([]contextbasedrestrictionsv1.RuleContext{*ruleContextModel})
 	createRuleOptions.SetResources([]contextbasedrestrictionsv1.Resource{*resourceModel})
 	createRuleOptions.SetEnforcementMode(contextbasedrestrictionsv1.CreateRuleOptionsEnforcementModeEnabledConst)
+	//Adding operations is supported only to `containers-kubernetes`
+	if serviceName == kubernetes_service {
+		operations := storageCBR.SetApiTypes()
+		if operations != nil {
+			createRuleOptions.SetOperations(operations)
+		}
+	}
 	rule, _, err := storageCBR.contextBasedRestrictionsService.CreateRule(createRuleOptions)
 	if err != nil {
 		return "", err
@@ -302,8 +318,8 @@ func (storageCBR *StorageCBR) DeleteCBRRuleZone(ruleID string, zoneID string) er
 // DeleteCBRZoneWithPattern ...
 func (storageCBR *StorageCBR) DeleteCBRZoneWithPattern(zoneDescription string) ([]string, error) {
 	if zoneDescription == "" {
-		storageCBR.logger.Info("Empty zoneDescription..")
-		return []string{}, errors.New("zoneDescription cannot be empty")
+		storageCBR.logger.Info("Empty zoneDescription, so will continue with default pattern", zap.Any("pattern", storageCBR.pattern))
+		zoneDescription = storageCBR.pattern
 	}
 	//List all CBR zones
 	var zoneIds []string
@@ -334,8 +350,8 @@ func (storageCBR *StorageCBR) DeleteCBRZoneWithPattern(zoneDescription string) (
 // DeleteCBRRuleWithPattern ...
 func (storageCBR *StorageCBR) DeleteCBRRuleWithPattern(ruleDescription string) ([]string, error) {
 	if ruleDescription == "" {
-		storageCBR.logger.Info("Empty ruleDescription")
-		return []string{}, errors.New("ruleDescription cannot be empty")
+		storageCBR.logger.Info("Empty ruleDescription, so will continue with default pattern", zap.Any("pattern", storageCBR.pattern))
+		ruleDescription = storageCBR.pattern
 	}
 	//List all CBR rules
 	var ruleIds []string
@@ -362,4 +378,20 @@ func (storageCBR *StorageCBR) DeleteCBRRuleWithPattern(ruleDescription string) (
 	}
 	storageCBR.logger.Info("List of ruleId's deleted with match", zap.Any("Description", ruleDescription), zap.Strings("ids", ruleIds))
 	return ruleIds, err
+}
+
+// SetApiTypes ...
+func (storageCBR *StorageCBR) SetApiTypes() *contextbasedrestrictionsv1.NewRuleOperations {
+	api_type := os.Getenv("APITYPE")
+	var apiID = ""
+	if api_type == "management" {
+		apiID = "crn:v1:bluemix:public:containers-kubernetes::::api-type:management"
+	} else if api_type == "cluster" {
+		apiID = "crn:v1:bluemix:public:containers-kubernetes::::api-type:cluster"
+	} else {
+		storageCBR.logger.Info("No valid api types mentioned")
+		return nil
+	}
+	apiTypes := []contextbasedrestrictionsv1.NewRuleOperationsAPITypesItem{contextbasedrestrictionsv1.NewRuleOperationsAPITypesItem{APITypeID: &apiID}}
+	return &contextbasedrestrictionsv1.NewRuleOperations{APITypes: apiTypes}
 }
