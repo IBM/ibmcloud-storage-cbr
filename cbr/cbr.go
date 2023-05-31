@@ -3,6 +3,7 @@ package cbr
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -18,8 +19,6 @@ const (
 	cos_service        = "cloud-object-storage"
 	keyProtect_service = "kms"
 )
-
-var kubernetes_service_apikey = "crn:v1:bluemix:public:containers-kubernetes::::api-type:management"
 
 type CBR struct {
 	VPC        []string `json:"VPC,omitempty"`        //The VPCs allowed in the zone. Input in the form 'value,value,...' where value is VPC CRN
