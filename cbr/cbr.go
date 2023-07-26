@@ -3,7 +3,6 @@ package cbr
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -233,14 +232,13 @@ func (storageCBR *StorageCBR) CreateCBRRule(zoneID string, serviceName string) (
 				Name:  core.StringPtr("serviceName"),
 				Value: core.StringPtr(serviceName),
 			},
-			{
-				Name:  core.StringPtr("resourceGroupId"),
-				Value: core.StringPtr(storageCBR.resourceGroupID),
-			},
 		},
 	}
 	if storageCBR.clusterID != "" {
 		resourceModel.Attributes = append(resourceModel.Attributes, contextbasedrestrictionsv1.ResourceAttribute{Name: core.StringPtr("serviceInstance"), Value: core.StringPtr(storageCBR.clusterID), Operator: core.StringPtr("stringEquals")})
+	} else {
+		resourceModel.Attributes = append(resourceModel.Attributes, contextbasedrestrictionsv1.ResourceAttribute{Name: core.StringPtr("resourceGroupId"), Value: core.StringPtr(storageCBR.resourceGroupID)})
+
 	}
 
 	createRuleOptions := storageCBR.contextBasedRestrictionsService.NewCreateRuleOptions()
